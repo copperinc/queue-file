@@ -200,7 +200,7 @@ impl QueueFile {
         };
         
         Self::init(path.as_ref(), len, rawblkdev, force_legacy)?;
-        Self::open_internal(path, true, false)
+        Self::open_internal(path, false, false)
     }
 
     pub fn open<P: AsRef<Path>>(path: P) -> Result<QueueFile> {
@@ -281,6 +281,12 @@ impl QueueFile {
             msg: format!("position of the last element ({}) is beyond the file", header.tail_pos),
         });
 
+        // unset overwrite_on_remove if the device is a raw blockdevice
+        let overwrite_on_remove = if header.is_rawblkdev() {
+            false
+        } else {
+            overwrite_on_remove
+        };
 
         let mut queue_file = QueueFile {
             file,
