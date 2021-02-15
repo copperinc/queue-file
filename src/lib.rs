@@ -232,9 +232,10 @@ impl QueueFile {
         let version: u16 = if force_legacy {
             0
         } else {
-            let mut buf = BytesMut::from(&buf[..]);
-            let _flags = buf.get_u16();
-            buf.get_u16()
+            // let mut buf = BytesMut::from(&buf[..]); // bytes 0.5 and above
+            let mut buf = std::io::Cursor::new(&buf);
+            let _flags = buf.get_u16_be();
+            buf.get_u16_be()
         };
        
         ensure!(bytes_read >= Header::version_len(version) as usize,
@@ -555,9 +556,10 @@ impl QueueFile {
             let mut buf = [0u8; Element::HEADER_LENGTH_V2];
             self.ring_read(pos, &mut buf, 0, Element::HEADER_LENGTH_V2)?;
 
-            let mut bbuf = BytesMut::from(&buf[..]);
-            let len = bbuf.get_u32() as usize;
-            let crc = bbuf.get_u32();
+            // let mut buf = BytesMut::from(&buf[..]); // bytes 0.5 and above
+            let mut bbuf = std::io::Cursor::new(&buf);
+            let len = bbuf.get_u32_be() as usize;
+            let crc = bbuf.get_u32_be();
 
             if crc != Element::crc(len) {
                 return Err(io::Error::new(
@@ -817,18 +819,18 @@ impl Header {
             assert!(self.head_pos <= i64::max_value() as u64);
             assert!(self.tail_pos <= i64::max_value() as u64);
 
-            self.hdr_buf.put_u16(self.flags);
-            self.hdr_buf.put_u16(self.version);
-            self.hdr_buf.put_u64(self.file_len);
-            self.hdr_buf.put_u32(self.elem_cnt);
-            self.hdr_buf.put_u64(self.head_pos);
-            self.hdr_buf.put_u64(self.tail_pos);
+            self.hdr_buf.put_u16_be(self.flags);
+            self.hdr_buf.put_u16_be(self.version);
+            self.hdr_buf.put_u64_be(self.file_len);
+            self.hdr_buf.put_u32_be(self.elem_cnt);
+            self.hdr_buf.put_u64_be(self.head_pos);
+            self.hdr_buf.put_u64_be(self.tail_pos);
 
             if version > 1 {
                 let mut digest = crc32::Digest::new(crc32::IEEE);
                 digest.write(&self.hdr_buf);
                 let crc = digest.sum32();            
-                self.hdr_buf.put_u32(crc);
+                self.hdr_buf.put_u32_be(crc);
             }
 
         } else {
@@ -838,10 +840,10 @@ impl Header {
             assert!(self.head_pos <= i32::max_value() as u64);
             assert!(self.tail_pos <= i32::max_value() as u64);
 
-            self.hdr_buf.put_u64(self.file_len);
-            self.hdr_buf.put_i32(self.elem_cnt as i32);
-            self.hdr_buf.put_u64(self.head_pos);
-            self.hdr_buf.put_u64(self.tail_pos);
+            self.hdr_buf.put_u64_be(self.file_len);
+            self.hdr_buf.put_i32_be(self.elem_cnt as i32);
+            self.hdr_buf.put_u64_be(self.head_pos);
+            self.hdr_buf.put_u64_be(self.tail_pos);
         }
         // self.hdr_buf        
     }
@@ -849,24 +851,25 @@ impl Header {
     fn from_bytes(buf: &[u8]) -> Header {
         let is_version0 = (buf[0] & 0x80) == 0;
 
-        let mut cbuf = BytesMut::from(&buf[..]);
+        // let mut cbuf = BytesMut::from(&buf[..]); // bytes 0.5 and above
+        let mut cbuf = std::io::Cursor::new(&buf);
         let mut flags = Self::FLAG_DEFAULT;
         let version = if is_version0 {
             0 
         } else {
-            flags = cbuf.get_u16();
-            cbuf.get_u16()
+            flags = cbuf.get_u16_be();
+            cbuf.get_u16_be()
         };
 
         let mut hdr = Header::new(version);
         hdr.flags    = flags;
-        hdr.file_len = cbuf.get_u64();
-        hdr.elem_cnt = cbuf.get_u32();
-        hdr.head_pos = cbuf.get_u64();
-        hdr.tail_pos = cbuf.get_u64();
+        hdr.file_len = cbuf.get_u64_be();
+        hdr.elem_cnt = cbuf.get_u32_be();
+        hdr.head_pos = cbuf.get_u64_be();
+        hdr.tail_pos = cbuf.get_u64_be();
 
         if version > 1 {
-            hdr.crc = cbuf.get_u32();
+            hdr.crc = cbuf.get_u32_be();
         }
         hdr
     }

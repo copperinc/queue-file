@@ -13,7 +13,7 @@ keywords = ["io", "fifo", "queue"]
 categories = ["data-structures"]
 
 [dependencies]
-bytes = "1.0"
+bytes = "0.4"
 snafu = "0.6"
 crc = "1.8.*"
 
