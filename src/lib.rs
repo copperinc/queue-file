@@ -27,7 +27,7 @@ use std::io::prelude::*;
 use std::io::SeekFrom;
 use std::path::Path;
 
-use bytes::{ Buf, BufMut, BytesMut };
+use bytes::{ Buf, BufMut, BytesMut, IntoBuf };
 use crc::{crc32, Hasher32};
 
 
@@ -233,7 +233,8 @@ impl QueueFile {
             0
         } else {
             // let mut buf = BytesMut::from(&buf[..]); // bytes 0.5 and above
-            let mut buf = std::io::Cursor::new(&buf);
+            // let mut buf = std::io::Cursor::new(&buf);
+            let mut buf = buf.into_buf();
             let _flags = buf.get_u16_be();
             buf.get_u16_be()
         };
@@ -557,7 +558,7 @@ impl QueueFile {
             self.ring_read(pos, &mut buf, 0, Element::HEADER_LENGTH_V2)?;
 
             // let mut buf = BytesMut::from(&buf[..]); // bytes 0.5 and above
-            let mut bbuf = std::io::Cursor::new(&buf);
+            let mut bbuf = buf.into_buf();
             let len = bbuf.get_u32_be() as usize;
             let crc = bbuf.get_u32_be();
 
