@@ -554,7 +554,7 @@ impl QueueFile {
         )
     }
 
-    fn read_element(&mut self, pos: u64) -> io::Result<Element> {
+    fn read_element(&mut self, pos: u64) -> Result<Element> {
         if pos == 0 {
             Ok(Element::EMPTY)
         } else {
@@ -569,8 +569,8 @@ impl QueueFile {
             let crc = bbuf.get_u32_be();
 
             if crc != Element::crc(len) {
-                return Err(io::Error::new(
-                    io::ErrorKind::Other, format!("Bad element hdr at {}", pos)));
+                return Err(
+                    Error::CorruptedFile { msg: format!("Bad element hdr at {}", pos) });
             }
 
             Ok(Element::new(pos, len))
