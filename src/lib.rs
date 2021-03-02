@@ -130,6 +130,9 @@ pub struct QueueFile {
     transfer_buf: Box<[u8]>,
     /// Buffer used by `write_header` function.
     header_buf: BytesMut,
+    /// When true, file is a raw block device
+    /// It's false by default.
+    raw_device: bool
 }
 
 impl QueueFile {
@@ -137,7 +140,7 @@ impl QueueFile {
     const VERSIONED_HEADER: u32 = 0x8000_0001;
     const ZEROES: [u8; 4096] = [0; 4096];
 
-    fn init(path: &Path, force_legacy: bool) -> Result<()> {
+    fn init(path: &Path, force_legacy: bool, raw_device: bool) -> Result<()> {
         let tmp_path = path.with_extension(".tmp");
 
         // Use a temp file so we don't leave a partially-initialized file.
@@ -145,7 +148,10 @@ impl QueueFile {
             let mut file =
                 OpenOptions::new().read(true).write(true).create(true).open(&tmp_path)?;
 
-            file.set_len(QueueFile::INITIAL_LENGTH)?;
+            if (!raw_device) {
+                file.set_len(QueueFile::INITIAL_LENGTH)?;
+            }
+
             file.seek(SeekFrom::Start(0))?;
 
             let mut buf = BytesMut::with_capacity(16);
@@ -167,18 +173,22 @@ impl QueueFile {
     }
 
     pub fn open<P: AsRef<Path>>(path: P) -> Result<QueueFile> {
-        Self::open_internal(path, true, false)
+        Self::open_internal(path, true, false, false)
     }
 
     pub fn open_legacy<P: AsRef<Path>>(path: P) -> Result<QueueFile> {
-        Self::open_internal(path, true, true)
+        Self::open_internal(path, true, true, false)
+    }
+
+    pub fn open_device<P: AsRef<Path>>(path: P) -> Result<QueueFile> {
+        Self::open_internal(path, true, false, true)
     }
 
     fn open_internal<P: AsRef<Path>>(
-        path: P, overwrite_on_remove: bool, force_legacy: bool,
+        path: P, overwrite_on_remove: bool, force_legacy: bool, raw_device: bool
     ) -> Result<QueueFile> {
         if !path.as_ref().exists() {
-            QueueFile::init(path.as_ref(), force_legacy)?;
+            QueueFile::init(path.as_ref(), force_legacy, raw_device)?;
         }
 
         let mut file = OpenOptions::new().read(true).write(true).open(path)?;
@@ -230,14 +240,17 @@ impl QueueFile {
             assert!(last_pos <= i32::max_value() as u64);
         }
 
-        let real_file_len = file.metadata()?.len();
+        if (!raw_device) {
+            let real_file_len = file.metadata()?.len();
 
-        ensure!(file_len <= real_file_len, CorruptedFile {
-            msg: format!(
-                "file is truncated. expected length was {} but actual length is {}",
-                file_len, real_file_len
-            )
-        });
+            ensure!(file_len <= real_file_len, CorruptedFile {
+                msg: format!(
+                    "file is truncated. expected length was {} but actual length is {}",
+                    file_len, real_file_len
+                )
+            });
+        }
+
         ensure!(file_len >= header_len, CorruptedFile {
             msg: format!("length stored in header ({}) is invalid", file_len)
         });
@@ -260,6 +273,7 @@ impl QueueFile {
             sync_writes: cfg!(not(test)),
             header_buf: BytesMut::with_capacity(32),
             transfer_buf: vec![0u8; Self::TRANSFER_BUFFER_SIZE].into_boxed_slice(),
+            raw_device
         };
 
         queue_file.first = queue_file.read_element(first_pos)?;
@@ -672,8 +686,12 @@ impl QueueFile {
     }
 
     fn sync_set_len(&mut self, new_len: u64) -> io::Result<()> {
-        self.file.set_len(new_len)?;
-        self.file.sync_all()
+        if self.raw_device {
+            Ok(())
+        } else {
+            self.file.set_len(new_len)?;
+            self.file.sync_all()
+        }
     }
 }
 
